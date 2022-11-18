@@ -1,11 +1,13 @@
 from bs4 import BeautifulSoup
-# from loguru import logger
 from openpyxl import Workbook, load_workbook
 from time import sleep
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.by import By
+from loguru import logger
 
-
-DATA_FOLDER = '/home/roman/real_python/web_parsing/yandex_map_parser'
-
+# DATA_FOLDER = '/home/roman/real_python/web_parsing/yandex_map_parser'
+# DATA_FOLDER = 'yandex_map_parser'
 
 all_cities = ['Калуга', 'Брянск', 'Майкоп', 'Санкт-Петербург', 'Новосибирск',
               'Казань', 'Нижний Новгород', 'Челябинск', 'Красноярск', 'Самара',
@@ -49,13 +51,13 @@ all_cities = ['Калуга', 'Брянск', 'Майкоп', 'Санкт-Пет
 city_list = [(number, city) for number, city in enumerate(all_cities, 1)]
 
 questions = ("Введите:\n"
-             "а) <Название города> - для анализа по одному городу,\n"
-             "б) Слово <Все>' - для анализа всех городов России "
+             "а) <Один город>, для обработки одного города,\n"
+             "б) <Все>' - для анализа всех городов России "
              "с населением более 100 тысяч человек...\n"
-             "в) Если произошло превывание программы при сборе ссылок"
-             ", введите <продолжить сбор ссылок>\n"
-             "г) Если  произошло прерывание при обработке ссылок,"
-             " введите <продолжить обработку ссылок>")
+             "в) <продолжить сбор ссылок> - eсли произошло превывание "
+             "программы при сборе ссылок\n"
+             "г) <продолжить обработку ссылок> - eсли  произошло "
+             "прерывание при обработке ссылок\n")
 
 question_2 = ('Так же введите количество сохраненных ссылок'
               ' до прерывания (см. Журнал)\n')
@@ -64,7 +66,7 @@ question_3 = ("Введите сферу, которую хотите обраб
 
 question_4 = "номер последнего обработанного города(см. Журнал)\n"
 
-question_5 = ("количество обработанных ссылок (см.Журнал)\n"
+question_5 = ("Введите количество обработанных ссылок (см.Журнал)"
               " для продолжения обработки с того же места\n")
 
 
@@ -85,46 +87,34 @@ def сreate_excel_tables():
     wb = Workbook()
     ws = wb.active
     ws.append(headers)
-    wb.save(f"{DATA_FOLDER}/data/partners.xlsx")
+    wb.save("data/partners.xlsx")
     wb.close()
     headers = ['Id мастера', 'Имя клиента', 'Рейтинг', 'Дата', 'Текст отзыва',
                'URL прикреплённых фотографий, через |']
     wb = Workbook()
     ws = wb.active
     ws.append(headers)
-    wb.save(f"{DATA_FOLDER}/data/reviews.xlsx")
+    wb.save("data/reviews.xlsx")
     wb.close()
     headers = ['Id партнёра', 'Название услуги',
                'Цена, руб', 'Длительность, минут']
     wb = Workbook()
     ws = wb.active
     ws.append(headers)
-    wb.save(f"{DATA_FOLDER}/data/services.xlsx")
+    wb.save("data/services.xlsx")
     wb.close()
 
 
 def append_data_table_partners(saving_list: list):
-
-    wb = load_workbook(f"{DATA_FOLDER}/data/partners.xlsx")
-    ws = wb.active
-    ws.append(saving_list)
-    wb.save(f"{DATA_FOLDER}/data/partners.xlsx")
-
-
-def append_data_table_reviews(saving_list: list):
-
-    wb = load_workbook(f"{DATA_FOLDER}/data/reviews.xlsx")
-    ws = wb.active
-    ws.append(saving_list)
-    wb.save(f"{DATA_FOLDER}/data/reviews.xlsx")
-
-
-def append_data_table_services(saving_list: list):
-
-    wb = load_workbook(f"{DATA_FOLDER}/data/services.xlsx")
-    ws = wb.active
-    ws.append(saving_list)
-    wb.save(f"{DATA_FOLDER}/data/services.xlsx")
+    try:
+        wb = load_workbook("data/partners.xlsx")
+        ws = wb.active
+        ws.append(saving_list)
+        wb.save("data/partners.xlsx")
+    except Exception as ex:
+        logger.warning(ex)
+    finally:
+        wb.close()
 
 
 def get_name_of_partner(soup) -> str:
@@ -193,20 +183,22 @@ def get_coordinates(driver):
         return None
 
 
-def ger_photos_links(driver, link):
+def get_photos_links(driver, link):
     try:
         list_of_photo_links = []
         driver.get(f'{link}gallery')
         sleep(1)
+        scroll_down_photo_page(driver)
         soup = BeautifulSoup(driver.page_source, "lxml")
         blocks_of_photo = soup.find_all("div", class_="photo-list__"
                                         "frame-wrapper")
-        for item in blocks_of_photo:
-            try:
-                link = item.find("img").get("src")
-            except Exception:
-                break
-            list_of_photo_links.append(link)
+        if blocks_of_photo:
+            for item in blocks_of_photo:
+                try:
+                    link = item.find("img").get("src")
+                    list_of_photo_links.append(link)
+                except Exception:
+                    continue
         return " | ".join(list_of_photo_links)
     except Exception:
         return None
@@ -275,6 +267,53 @@ def get_name_service(soup):
 def get_price(soup):
     try:
         price = soup.find('div', class_='related-item-list-view__price').text
-        return price
+        return price[:-1]
     except Exception:
         return None
+
+
+def scroll_down_photo_page(driver):
+    '''Scrolling down for all reviews seeing'''
+    try:
+        actions = ActionChains(driver)
+        num_of_pushing_page_down = 25
+        clickable_element = (driver.find_element(By.TAG_NAME,
+                             "h1"))
+        actions.click(clickable_element).perform()
+        page_scrolling = driver.find_element(By.TAG_NAME, "body")
+        for i in range(num_of_pushing_page_down):
+            page_scrolling.send_keys(Keys.PAGE_DOWN)
+            sleep(0.1)
+    except Exception as ex:
+        sleep(5)
+        scroll_down_photo_page(driver)
+        logger.warning(ex)
+
+
+def scroll_page_down_reviews(driver):
+    '''Scrolling down for all reviews seeing'''
+    try:
+        actions = ActionChains(driver)
+        num_of_pushing_page_down = 20
+        clickable_element = (driver.find_element(By.TAG_NAME,
+                             "h1"))
+        actions.click(clickable_element).perform()
+        page_scrolling = driver.find_element(By.TAG_NAME, "body")
+        for i in range(num_of_pushing_page_down):
+            page_scrolling.send_keys(Keys.PAGE_DOWN)
+            sleep(0.2)
+    except Exception as ex:
+        sleep(5)
+        scroll_page_down_reviews(driver)
+        logger.warning(ex)
+
+
+def create_file_for_links():
+    with open("data/links.txt", 'w') as file:
+        file.write('')
+
+
+def save_links_in_txt(list):
+    with open("data/links.txt", 'a') as file:
+        for link in list:
+            file.write(f'{link}\n')
