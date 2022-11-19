@@ -12,6 +12,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
 from openpyxl import load_workbook
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 
 warnings.filterwarnings('ignore')
 
@@ -21,7 +22,7 @@ useragent = ("user-agent=Mozilla/5.0 (X11; Linux x86_64) '\
                          'AppleWebKit/537.36 (KHTML, like Gecko) '\
                          'Chrome/106.0.0.0 Safari/537.36")
 
-PATH_TO_DRIVER = 'chromedriver'
+PATH_TO_DRIVER = '/home/roman/real_python/web_parsing/yandex_map_parser/chromedriver'
 
 logger.remove(0)
 logger.add(sys.stderr, format="<green>{time:HH:mm:ss}</green> {level} "
@@ -38,13 +39,15 @@ def create_data_folder():
 
 
 def get_driver_chrome():
+    caps = DesiredCapabilities().CHROME
+    caps["pageLoadStrategy"] = 'eager'
     options = webdriver.ChromeOptions()
     options.add_experimental_option('excludeSwitches', ["enable-automation"])
     options.add_experimental_option('useAutomationExtension', False)
     options.add_experimental_option('excludeSwitches', ['enable-logging'])
     options.headless = True
     driver = webdriver.Chrome(executable_path=PATH_TO_DRIVER,
-                              options=options)
+                              options=options, desired_capabilities=caps)
     stealth(driver, user_agent=useragent, languages=["en-US", 'en'],
             vendor="Google Inc.", platform="Win 32",
             webgl_vendor="Intel Inc.", renderer="Intel Iris OpenGL Engine",
@@ -85,7 +88,7 @@ def ask_user_questions():
 def input_city_and_request(driver, curent_city, request):
     try:
         driver.get(URL)
-        sleep(2)
+        sleep(1)
         driver.find_element(By.TAG_NAME, "input").send_keys(curent_city)
         driver.find_element(By.TAG_NAME, "input").send_keys(" " + request)
         driver.find_element(By.TAG_NAME, "button").click()
@@ -99,7 +102,7 @@ def input_city_and_request(driver, curent_city, request):
 def scroll_page_down_links(driver, actions):
     '''Srcoll down for all main links seeing'''
     try:
-        num_of_pushing_page_down = 18
+        num_of_pushing_page_down = 19
         clickable_element = (driver.find_element(By.CLASS_NAME,
                              "search-list-view__content")
                              .find_element(By.TAG_NAME, "div"))
