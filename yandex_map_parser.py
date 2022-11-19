@@ -22,7 +22,8 @@ useragent = ("user-agent=Mozilla/5.0 (X11; Linux x86_64) '\
                          'AppleWebKit/537.36 (KHTML, like Gecko) '\
                          'Chrome/106.0.0.0 Safari/537.36")
 
-PATH_TO_DRIVER = '/home/roman/real_python/web_parsing/yandex_map_parser/chromedriver'
+PATH_TO_DRIVER = ('/home/roman/real_python/web_parsing/'
+                  'yandex_map_parser/chromedriver')
 
 logger.remove(0)
 logger.add(sys.stderr, format="<green>{time:HH:mm:ss}</green> {level} "
