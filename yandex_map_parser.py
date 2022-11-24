@@ -22,16 +22,14 @@ useragent = ("user-agent=Mozilla/5.0 (X11; Linux x86_64) '\
                          'AppleWebKit/537.36 (KHTML, like Gecko) '\
                          'Chrome/106.0.0.0 Safari/537.36")
 
-PATH_TO_DRIVER = ('/home/roman/real_python/web_parsing/'
-                  'yandex_map_parser/chromedriver')
+PATH_TO_DRIVER = ('/home/roman/real_python/webdriver/chromedriver')
 
 logger.remove(0)
 logger.add(sys.stderr, format="<green>{time:HH:mm:ss}</green> {level} "
            "<blue>{message}</blue>", level="DEBUG")
 logger.add('data/Журнал_обработанных_данных.log',
            format=" {time:HH:mm:ss} {level} {message}",
-           level="DEBUG",
-           rotation='50 MB', compression='zip', retention='7 days')
+           level="DEBUG")
 
 
 def create_data_folder():
@@ -46,11 +44,11 @@ def get_driver_chrome():
     options.add_experimental_option('excludeSwitches', ["enable-automation"])
     options.add_experimental_option('useAutomationExtension', False)
     options.add_experimental_option('excludeSwitches', ['enable-logging'])
-    options.headless = True
+    options.headless = False
     driver = webdriver.Chrome(executable_path=PATH_TO_DRIVER,
                               options=options, desired_capabilities=caps)
     stealth(driver, user_agent=useragent, languages=["en-US", 'en'],
-            vendor="Google Inc.", platform="Win 32",
+            vendor="Google Inc.", platform="Win32",
             webgl_vendor="Intel Inc.", renderer="Intel Iris OpenGL Engine",
             fix_hairline=True)
     return driver
@@ -82,8 +80,8 @@ def ask_user_questions():
             sub.create_file_for_links()
         return city, request, int(start_value), int(num_handled)
     except Exception:
-        logger.warning('Похоже опечатка!!!, попробуйте ввести все'
-                       ' данные еще раз')
+        logger.error('Похоже опечатка!!!, попробуйте ввести все'
+                     ' данные еще раз')
 
 
 def input_city_and_request(driver, curent_city, request):
@@ -94,20 +92,25 @@ def input_city_and_request(driver, curent_city, request):
         driver.find_element(By.TAG_NAME, "input").send_keys(" " + request)
         driver.find_element(By.TAG_NAME, "button").click()
         sleep(1.5)
-    except Exception as ex:
-        logger.error('ошибка при вводе поисковый данных', ex)
-        sleep(10)
-        input_city_and_request(driver, curent_city, request)
+    except Exception:
+        logger.error('Input data and request')
 
 
 def scroll_page_down_links(driver, actions):
-    '''Srcoll down for all main links seeing'''
+    '''Srcoll down for all  links seeing'''
     try:
-        num_of_pushing_page_down = 19
         clickable_element = (driver.find_element(By.CLASS_NAME,
                              "search-list-view__content")
                              .find_element(By.TAG_NAME, "div"))
         actions.click(clickable_element).perform()
+        moving_down(driver)
+    except Exception:
+        logger.error('Scroll links')
+
+
+def moving_down(driver):
+    try:
+        num_of_pushing_page_down = 19
         page_scrolling = driver.find_element(By.TAG_NAME, "body")
         while True:  # srcoll action
             num_links_before_scroll = len(driver.find_elements(By.CLASS_NAME,
@@ -121,8 +124,8 @@ def scroll_page_down_links(driver, actions):
                 continue
             else:
                 break
-    except Exception as ex:
-        logger.error("Ошибка при скролинге страницы", ex)
+    except Exception:
+        logger.error('Moving down links')
 
 
 def save_all_links(source, num_links):
@@ -138,8 +141,8 @@ def save_all_links(source, num_links):
             temp_list_for_links.append(curent_link)
         sub.save_links_in_txt(temp_list_for_links)
         return num, len(temp_list_for_links)
-    except Exception as ex:
-        logger.error('Ошибка при сохранении ссылок в файл', ex)
+    except Exception:
+        logger.error('Save links')
 
 
 def get_all_links(current_city, request, num_links):
@@ -153,11 +156,27 @@ def get_all_links(current_city, request, num_links):
         num, sum_links = save_all_links(driver.page_source, num_links)
         logger.info(f'Для города {current_city[0]} {current_city[1]} '
                     f'собрано {sum_links} шт., собрано всего {num} шт.')
-    except Exception as ex:
-        logger.error(ex)
+    except Exception:
+        logger.error('ПРОГРАММА ОСТАНОВЛЕНА!')
+        input('ОБРЫВ ИНТЕРНЕТ СОЕДИНЕНИЯ, ПЕРЕЗАПУСТИТЕ ПРОГРАММУ!!!\n')
     finally:
         driver.close()
         driver.quit()
+
+
+def delete_dublicate_links():
+    with open("data/links.txt") as file:
+        temp_list = file.readlines()
+        old_list = [i.split()[1] for i in temp_list]
+    new_list = []
+    [new_list.append(item) for item in old_list if item not in new_list]
+
+    with open("data/links.txt", 'w') as file:
+        a = 1
+        for link in new_list:
+            file.write(f'{a} {link}\n')
+            a += 1
+    logger.info('ДУБЛИКАТЫ ССЫЛОК УДАЛЕНЫ')
 
 
 def get_data_for_partner_table(link, partner_id) -> int:
@@ -168,30 +187,21 @@ def get_data_for_partner_table(link, partner_id) -> int:
         soup = BeautifulSoup(driver.page_source, "lxml")
         empty_line = ''
         result_list = [
-            partner_id,
-            'компания',
-            sub.get_name_of_partner(soup),
-            empty_line,
-            sub.get_phone_number(soup),
-            empty_line,
-            sub.get_address(soup),
-            empty_line,
-            empty_line,
-            sub.get_messenger(soup, 'telegram'),
-            sub.get_messenger(soup, 'whatsapp'),
-            empty_line,
-            sub.get_messenger(soup, 'vkontakte'),
-            sub.get_website(soup),
-            empty_line,
-            sub.get_logo_link(soup),
-            sub.get_coordinates(driver)[1],
-            sub.get_coordinates(driver)[0],
-            sub.get_photos_links(driver, link)
-        ]
+            partner_id, 'компания',
+            sub.get_name_of_partner(soup), empty_line,
+            sub.get_phone_number(soup), empty_line,
+            sub.get_address(soup), empty_line,
+            empty_line, sub.get_messenger(soup, 'telegram'),
+            sub.get_messenger(soup, 'whatsapp'), empty_line,
+            sub.get_messenger(soup, 'vkontakte'), sub.get_website(soup),
+            empty_line, sub.get_logo_link(soup),
+            sub.get_coordinates(driver)[1], sub.get_coordinates(driver)[0],
+            sub.get_photos_links(driver, link)]
         sub.append_data_table_partners(result_list)
         return partner_id
-    except Exception as ex:
-        logger.warning(ex)
+    except Exception:
+        logger.error('ПРОГРАММА ОСТАНОВЛЕНА!')
+        input('ОБРЫВ ИНТЕРНЕТ СОЕДИНЕНИЯ, ПЕРЕЗАПУСТИТЕ ПРОГРАММУ!!!\n')
     finally:
         driver.close()
         driver.quit()
@@ -205,27 +215,32 @@ def get_data_for_reviews_table(link, partner_id):
         sub.scroll_page_down_reviews(driver)
         soup = BeautifulSoup(driver.page_source, "lxml")
         all_reviews = sub.get_all_reviews(soup)
-        empty_line = ''
         wb = load_workbook("data/reviews.xlsx")
         ws = wb.active
         if all_reviews:
             for one_block in all_reviews:
-                current_review = [
-                    partner_id,
-                    sub.get_name_client(one_block),
-                    sub.get_rating(one_block),
-                    sub.get_date_review(one_block),
-                    sub.get_text_review(one_block),
-                    empty_line
-                ]
+                current_review = get_current_review_row(one_block, partner_id)
                 ws.append(current_review)
-    except Exception as ex:
-        logger.warning(ex)
+    except Exception:
+        logger.error('ПРОГРАММА ОСТАНОВЛЕНА!')
+        input('ОБРЫВ ИНТЕРНЕТ СОЕДИНЕНИЯ, ПЕРЕЗАПУСТИТЕ ПРОГРАММУ!!!\n')
     finally:
         wb.save("data/reviews.xlsx")
         wb.close()
         driver.close()
         driver.quit()
+
+
+def get_current_review_row(one_block, partner_id):
+    empty_line = ''
+    return [
+        partner_id,
+        sub.get_name_client(one_block),
+        sub.get_rating(one_block),
+        sub.get_date_review(one_block),
+        sub.get_text_review(one_block),
+        empty_line
+        ]
 
 
 def get_data_for_services_table(link, partner_id):
@@ -239,14 +254,13 @@ def get_data_for_services_table(link, partner_id):
         ws = wb.active
         if all_services:
             for one_sevice in all_services:
-                current_service = [
-                    partner_id,
-                    sub.get_name_service(one_sevice),
-                    sub.get_price(one_sevice)
-                ]
+                current_service = [partner_id,
+                                   sub.get_name_service(one_sevice),
+                                   sub.get_price(one_sevice)]
                 ws.append(current_service)
-    except Exception as ex:
-        logger.warning(ex)
+    except Exception:
+        logger.error('ПРОГРАММА ОСТАНОВЛЕНА!')
+        input('ОБРЫВ ИНТЕРНЕТ СОЕДИНЕНИЯ, ПЕРЕЗАПУСТИТЕ ПРОГРАММУ!!!\n')
     finally:
         wb.save("data/services.xlsx")
         wb.close()
@@ -255,7 +269,7 @@ def get_data_for_services_table(link, partner_id):
 
 
 def process_all_links(num_handled):
-
+    delete_dublicate_links()
     with open("data/links.txt", "r") as file:
         for row in file:
             link = row.strip().split()[1]
@@ -263,28 +277,34 @@ def process_all_links(num_handled):
             if num_handled >= partner_id:
                 continue
             try:
-                tread_1 = Thread(target=get_data_for_partner_table,
-                                 args=(link, partner_id))
-                tread_2 = Thread(target=get_data_for_reviews_table,
-                                 args=(link, partner_id))
-                tread_3 = Thread(target=get_data_for_services_table,
-                                 args=(link, partner_id))
-                tread_3.start()
-                tread_1.start()
-                tread_2.start()
-                tread_3.join()
-                tread_1.join()
-                tread_2.join()
+                multithreads_get_all_data(partner_id, link)
                 logger.info(f'Идет обработка ссылок, {partner_id}'
                             ' сохранена')
-            except Exception as ex:
-                logger.warning(ex)
+            except Exception:
+                logger.error('Process links')
     logger.info(f'Обработка ссылок окончена! Всего {partner_id} ссылок')
 
 
-@logger.catch
-def main():
+def multithreads_get_all_data(partner_id, link):
 
+    try:
+        tread_1 = Thread(target=get_data_for_partner_table,
+                         args=(link, partner_id))
+        tread_2 = Thread(target=get_data_for_reviews_table,
+                         args=(link, partner_id))
+        tread_3 = Thread(target=get_data_for_services_table,
+                         args=(link, partner_id))
+        tread_3.start()
+        tread_1.start()
+        tread_2.start()
+        tread_3.join()
+        tread_1.join()
+        tread_2.join()
+    except Exception:
+        logger.error('multithreads')
+
+
+def main():
     try:
         create_data_folder()
         city, request, start_value, num_handled = ask_user_questions()
@@ -292,8 +312,8 @@ def main():
         for current_city in city:
             get_all_links(current_city, request, num_links)
         process_all_links(num_handled)
-    except Exception as ex:
-        logger.error(ex)
+    except Exception:
+        logger.error('main')
 
 
 if __name__ == '__main__':
