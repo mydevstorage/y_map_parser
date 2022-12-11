@@ -145,14 +145,16 @@ all_cities = ['Москва район Академический', 'Москв�
 
 city_list = [(number, city) for number, city in enumerate(all_cities, 1)]
 
-questions = ("Введите:\n"
-             "а) <Один город>, для обработки одного города,\n"
-             "б) <Все>' - для анализа всех городов России "
+questions = ("Введите цифру:\n"
+             "<1> для обработки ОДНОГО города,\n"
+             "<2> - для анализа ВСЕХ городов России "
              "с населением более 100 тысяч человек...\n"
-             "в) <продолжить сбор ссылок> - eсли произошло превывание "
-             "программы при сборе ссылок\n"
-             "г) <продолжить обработку ссылок> - eсли  произошло "
-             "прерывание при обработке ссылок\n")
+             "<3> -  для продолжения работы, eсли произошло превывание "
+             "программы при СБОРЕ ссылок\n"
+             "<4> - для продолжения работы, eсли произошло "
+             "прерывание при ОБРАБОТКЕ ссылок\n"
+             "<5> - для продолжения работы с собранными ссылками с нуля"
+             ", поврежденные excel файлы пересоздадутся\n")
 
 question_2 = ('Так же введите количество сохраненных ссылок'
               ' до прерывания (см. Журнал)\n')
@@ -217,6 +219,33 @@ def append_data_table_partners(saving_list: list):
         wb.close()
 
 
+def append_data_table_reviews(saving_list: list):
+    try:
+        wb = load_workbook("data/reviews.xlsx")
+        ws = wb.active
+        for item in saving_list:
+            ws.append(item)
+    except Exception:
+        logger.warning('Saving reviews excel error')
+    finally:
+        wb.save("data/reviews.xlsx")
+        wb.close()
+
+
+def append_data_table_services(saving_list: list):
+    if saving_list:
+        try:
+            wb = load_workbook("data/services.xlsx")
+            ws = wb.active
+            for item in saving_list:
+                ws.append(item)
+        except Exception:
+            logger.exception('Saving services excel error')
+        finally:
+            wb.save("data/services.xlsx")
+            wb.close()
+
+
 def get_name_of_partner(soup) -> str:
     try:
         name = (soup.find("div", class_="sticky-wrapper _position_top _header"
@@ -279,7 +308,7 @@ def get_logo_link(soup):
 
 def get_coordinates(driver):
     try:
-        coordinates = (driver.current_url.split("/")[7].replace("?ll=", "")
+        coordinates = (driver.current_url.split("/")[-1].replace("?ll=", "")
                        .replace("%2C", " ").split("&")[0].split())
         return coordinates[0], coordinates[1]
     except Exception:
@@ -393,7 +422,7 @@ def scroll_down_photo_page(driver):
             tmp = driver.find_elements(By.CLASS_NAME, "photo-wrapper__photo")
             for i in range(num_of_pushing_page_down):
                 page_scrolling.send_keys(Keys.PAGE_DOWN)
-                sleep(0.1)
+            sleep(0.2)
             tmp2 = driver.find_elements(By.CLASS_NAME, "photo-wrapper__photo")
             if len(tmp) < len(tmp2):
                 continue
@@ -407,7 +436,7 @@ def scroll_page_down_reviews(driver):
     '''Scrolling down for all reviews seeing'''
     try:
         actions = ActionChains(driver)
-        num_of_pushing_page_down = 20
+        num_of_pushing_page_down = 30
         clickable_element = (driver.find_element(By.TAG_NAME,
                              "h1"))
         actions.click(clickable_element).perform()
@@ -425,7 +454,7 @@ def scroll_page_down_reviews(driver):
             else:
                 break
     except Exception:
-        logger.warning('Scroll reviews page')
+        logger.error('Scroll reviews page')
 
 
 def create_file_for_links():

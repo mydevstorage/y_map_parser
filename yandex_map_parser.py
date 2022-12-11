@@ -1,17 +1,16 @@
 import os
 import sub
 import sys
+import zipfile
 import warnings
 from time import sleep
 from loguru import logger
-from threading import Thread
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium_stealth import stealth
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
-from openpyxl import load_workbook
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 
 warnings.filterwarnings('ignore')
@@ -28,13 +27,15 @@ logger.remove(0)
 logger.add(sys.stderr, format="<green>{time:HH:mm:ss}</green> {level} "
            "<blue>{message}</blue>", level="DEBUG")
 logger.add('data/Журнал_обработанных_данных.log',
-           format=" {time:HH:mm:ss} {level} {message}",
+           format=" {time:HH:mm:ss} {level} {line} {message}",
            level="DEBUG")
 
 
 def create_data_folder():
     if not os.path.exists("data"):
         os.mkdir("data")
+    if not os.path.exists("data/parts"):
+        os.mkdir("data/parts")
 
 
 def get_driver_chrome():
@@ -44,7 +45,7 @@ def get_driver_chrome():
     options.add_experimental_option('excludeSwitches', ["enable-automation"])
     options.add_experimental_option('useAutomationExtension', False)
     options.add_experimental_option('excludeSwitches', ['enable-logging'])
-    options.headless = False
+    options.headless = True
     driver = webdriver.Chrome(executable_path=PATH_TO_DRIVER,
                               options=options, desired_capabilities=caps)
     stealth(driver, user_agent=useragent, languages=["en-US", 'en'],
@@ -58,30 +59,33 @@ def ask_user_questions():
     try:
         answer = input(sub.questions)
         print()
-        if answer.lower() == 'все':
+        if answer.lower() == '2':
             city, start_value = sub.city_list, 0
             sub.create_file_for_links()
             sub.сreate_excel_tables()
             request, num_handled = input(sub.question_3), 0
-        elif answer == 'продолжить сбор ссылок':
+        elif answer == '3':
             num_saved = int(input(sub.question_4))
             city = sub.city_list[num_saved:]
             start_value = input(sub.question_2)
             request, num_handled = input(sub.question_3), 0
-        elif answer == 'продолжить обработку ссылок':
+        elif answer == '4':
             num_handled = input(sub.question_5)
             city, start_value, request = {}, 0, None
             logger.info('Обработка началась...')
-        elif answer.lower() == 'один город':
-            name_city = input('Введите название города\n')
+        elif answer == '1':
+            name_city = input('Введите название города\n').lower()
             city, start_value, num_handled = [(1, name_city)], 0, 0
-            request = input(sub.question_3)
+            request = input(sub.question_3).lower()
             sub.сreate_excel_tables()
             sub.create_file_for_links()
+        elif answer == '5':
+            city, start_value, request, num_handled = {}, 0, None, 0
+            sub.сreate_excel_tables()
+            logger.info('Обработка началась...')
         return city, request, int(start_value), int(num_handled)
     except Exception:
-        logger.error('Похоже опечатка!!!, попробуйте ввести все'
-                     ' данные еще раз')
+        input('ОПЕЧАТКА!!! Перезапустите программу и введите данные еще раз')
 
 
 def input_city_and_request(driver, curent_city, request):
@@ -94,6 +98,28 @@ def input_city_and_request(driver, curent_city, request):
         sleep(1.5)
     except Exception:
         logger.error('Input data and request')
+
+
+def create_backup_excel(partner_id):
+
+    files = ["data/partners.xlsx", "data/reviews.xlsx", "data/services.xlsx"]
+    if partner_id % 1000 == 0:
+        archive = f"data/parts/part_[{str(partner_id)[:-3]}].zip"
+        zip_func(archive, files)
+        sub.сreate_excel_tables()
+    elif partner_id % 2 == 0:
+        archive = "data/backup_copy_excel 1.zip"
+        zip_func(archive, files)
+    else:
+        archive = "data/backup_copy_excel 2.zip"
+        zip_func(archive, files)
+
+
+def zip_func(archive, files):
+
+    with zipfile.ZipFile(archive, "w") as zf:
+        for file in files:
+            zf.write(file)
 
 
 def scroll_page_down_links(driver, actions):
@@ -110,14 +136,14 @@ def scroll_page_down_links(driver, actions):
 
 def moving_down(driver):
     try:
-        num_of_pushing_page_down = 19
+        num_of_pushing_page_down = 22
         page_scrolling = driver.find_element(By.TAG_NAME, "body")
         while True:  # srcoll action
             num_links_before_scroll = len(driver.find_elements(By.CLASS_NAME,
                                           "search-snippet-view"))
             for i in range(num_of_pushing_page_down):
                 page_scrolling.send_keys(Keys.PAGE_DOWN)
-                sleep(0.1)
+                sleep(0.4)
             num_links_after_scroll = len(driver.find_elements(By.CLASS_NAME,
                                          "search-snippet-view"))
             if num_links_after_scroll > num_links_before_scroll:  # comparison
@@ -145,11 +171,10 @@ def save_all_links(source, num_links):
         logger.error('Save links')
 
 
-def get_all_links(current_city, request, num_links):
+def get_all_links(current_city, request, num_links, driver):
     try:
         logger.info(f'Идет сбор ссылок в городе {current_city[0]}'
                     f' {current_city[1]}')
-        driver = get_driver_chrome()
         actions = ActionChains(driver)
         input_city_and_request(driver, current_city[1], request)
         scroll_page_down_links(driver, actions)
@@ -157,11 +182,9 @@ def get_all_links(current_city, request, num_links):
         logger.info(f'Для города {current_city[0]} {current_city[1]} '
                     f'собрано {sum_links} шт., собрано всего {num} шт.')
     except Exception:
-        logger.error('ПРОГРАММА ОСТАНОВЛЕНА!')
-        input('ОБРЫВ ИНТЕРНЕТ СОЕДИНЕНИЯ, ПЕРЕЗАПУСТИТЕ ПРОГРАММУ!!!\n')
-    finally:
         driver.close()
         driver.quit()
+        logger.info("ОШИБКА ДАННЫХ ИЛИ СЕТИ")
 
 
 def delete_dublicate_links():
@@ -176,12 +199,10 @@ def delete_dublicate_links():
         for link in new_list:
             file.write(f'{a} {link}\n')
             a += 1
-    logger.info('ДУБЛИКАТЫ ССЫЛОК УДАЛЕНЫ')
 
 
-def get_data_for_partner_table(link, partner_id) -> int:
+def get_data_for_partner_table(link, partner_id, driver) -> int:
     try:
-        driver = get_driver_chrome()
         driver.get(link)
         sleep(1)
         soup = BeautifulSoup(driver.page_source, "lxml")
@@ -197,38 +218,30 @@ def get_data_for_partner_table(link, partner_id) -> int:
             empty_line, sub.get_logo_link(soup),
             sub.get_coordinates(driver)[1], sub.get_coordinates(driver)[0],
             sub.get_photos_links(driver, link)]
-        sub.append_data_table_partners(result_list)
-        return partner_id
+        return result_list
     except Exception:
-        logger.error('ПРОГРАММА ОСТАНОВЛЕНА!')
-        input('ОБРЫВ ИНТЕРНЕТ СОЕДИНЕНИЯ, ПЕРЕЗАПУСТИТЕ ПРОГРАММУ!!!\n')
-    finally:
         driver.close()
         driver.quit()
+        logger.error("ОШИБКА ДАННЫХ ИЛИ СЕТИ")
 
 
-def get_data_for_reviews_table(link, partner_id):
+def get_data_for_reviews_table(link, partner_id, driver):
     try:
-        driver = get_driver_chrome()
         driver.get(f'{link}reviews')
         sleep(1)
         sub.scroll_page_down_reviews(driver)
         soup = BeautifulSoup(driver.page_source, "lxml")
         all_reviews = sub.get_all_reviews(soup)
-        wb = load_workbook("data/reviews.xlsx")
-        ws = wb.active
+        reviews_list = []
         if all_reviews:
             for one_block in all_reviews:
                 current_review = get_current_review_row(one_block, partner_id)
-                ws.append(current_review)
+                reviews_list.append(current_review)
+        return reviews_list
     except Exception:
-        logger.error('ПРОГРАММА ОСТАНОВЛЕНА!')
-        input('ОБРЫВ ИНТЕРНЕТ СОЕДИНЕНИЯ, ПЕРЕЗАПУСТИТЕ ПРОГРАММУ!!!\n')
-    finally:
-        wb.save("data/reviews.xlsx")
-        wb.close()
         driver.close()
         driver.quit()
+        logger.error("ОШИБКА ДАННЫХ ИЛИ СЕТИ")
 
 
 def get_current_review_row(one_block, partner_id):
@@ -243,32 +256,28 @@ def get_current_review_row(one_block, partner_id):
         ]
 
 
-def get_data_for_services_table(link, partner_id):
+def get_data_for_services_table(link, partner_id, driver):
     try:
-        driver = get_driver_chrome()
         driver.get(f'{link}prices')
         sleep(1)
         soup = BeautifulSoup(driver.page_source, "lxml")
         all_services = sub.get_all_serevices(soup)
-        wb = load_workbook("data/services.xlsx")
-        ws = wb.active
         if all_services:
+            services_list = []
             for one_sevice in all_services:
                 current_service = [partner_id,
                                    sub.get_name_service(one_sevice),
                                    sub.get_price(one_sevice)]
-                ws.append(current_service)
+                services_list.append(current_service)
+            return services_list
     except Exception:
-        logger.error('ПРОГРАММА ОСТАНОВЛЕНА!')
-        input('ОБРЫВ ИНТЕРНЕТ СОЕДИНЕНИЯ, ПЕРЕЗАПУСТИТЕ ПРОГРАММУ!!!\n')
-    finally:
-        wb.save("data/services.xlsx")
-        wb.close()
         driver.close()
         driver.quit()
+        logger.error("ОШИБКА ДАННЫХ ИЛИ СЕТИ")
 
 
-def process_all_links(num_handled):
+def process_all_links(num_handled, driver):
+
     delete_dublicate_links()
     with open("data/links.txt", "r") as file:
         for row in file:
@@ -276,44 +285,43 @@ def process_all_links(num_handled):
             partner_id = int(row.strip().split()[0])
             if num_handled >= partner_id:
                 continue
-            try:
-                multithreads_get_all_data(partner_id, link)
-                logger.info(f'Идет обработка ссылок, {partner_id}'
-                            ' сохранена')
-            except Exception:
-                logger.error('Process links')
+            get_all_data(partner_id, link, driver)
     logger.info(f'Обработка ссылок окончена! Всего {partner_id} ссылок')
 
 
-def multithreads_get_all_data(partner_id, link):
+def get_all_data(partner_id, link, driver):
 
     try:
-        tread_1 = Thread(target=get_data_for_partner_table,
-                         args=(link, partner_id))
-        tread_2 = Thread(target=get_data_for_reviews_table,
-                         args=(link, partner_id))
-        tread_3 = Thread(target=get_data_for_services_table,
-                         args=(link, partner_id))
-        tread_3.start()
-        tread_1.start()
-        tread_2.start()
-        tread_3.join()
-        tread_1.join()
-        tread_2.join()
+        partners_list = get_data_for_partner_table(link, partner_id, driver)
+        reviews_list = get_data_for_reviews_table(link, partner_id, driver)
+        services_list = get_data_for_services_table(link, partner_id, driver)
+        sub.append_data_table_partners(partners_list)
+        sub.append_data_table_reviews(reviews_list)
+        sub.append_data_table_services(services_list)
+        logger.info(f'Идет обработка ссылок, {partner_id} сохранена')
+        if partner_id % 25 == 0:
+            create_backup_excel(partner_id)
     except Exception:
-        logger.error('multithreads')
+        driver.close()
+        driver.quit()
+        logger.error("ОШИБКА ДАННЫХ ИЛИ СЕТИ")
 
 
 def main():
     try:
+        driver = get_driver_chrome()
         create_data_folder()
         city, request, start_value, num_handled = ask_user_questions()
         num_links = sub.counter(start_value)
         for current_city in city:
-            get_all_links(current_city, request, num_links)
-        process_all_links(num_handled)
+            sub.create_file_for_links()
+            get_all_links(current_city, request, num_links, driver)
+        process_all_links(num_handled, driver)
     except Exception:
-        logger.error('main')
+        logger.info('ПЕРЕЗАПУСТИТЕ ПРОГРАММУ')
+    finally:
+        driver.close()
+        driver.quit()
 
 
 if __name__ == '__main__':
